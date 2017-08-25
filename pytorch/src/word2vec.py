@@ -1,4 +1,3 @@
-from tqdm import tqdm
 
 import argparse
 import torch
@@ -12,6 +11,7 @@ import os
 import urllib
 import zipfile
 import collections
+import time
 
 np.random.seed(12345)
 
@@ -29,15 +29,10 @@ VOCABULARY_SIZE = 50000
 
 class CBOW(nn.Module):
     def __init__(self, vocabulary_size, embedding_dimension):
-        """
-
-        :param embedding_size: count of nodes which have embedding
-        :param embedding_dim: embedding dimension
-        """
         super(CBOW, self).__init__()
         self.vocabulary_size = vocabulary_size
         self.embedding_dimension = embedding_dimension
-        self.embeddings = nn.Embedding(self.vocabulary_size, self.embedding_dimension)
+        self.embeddings = nn.Embedding(self.vocabulary_size, self.embedding_dimension, sparse=True)
         self.linear = nn.Linear(embedding_dimension, vocabulary_size)
         self.init_embeddings()
 
@@ -66,23 +61,28 @@ class Word2Vec:
         self.cbow = CBOW(vocabulary_size=VOCABULARY_SIZE, embedding_dimension=self.embedding_dimension)
 
     def train(self):
-        loss_function = nn.CrossEntropyLoss()
-        optimizer = optim.Adagrad(self.cbow.parameters(), lr=0.001)
-
+        loss_function = nn.NLLLoss()
+        optimizer = optim.SGD(self.cbow.parameters(), lr=0.01, momentum=0.5)
+        optimizer.zero_grad()
         epochs = 100001
         data_index = 0
-        for epoch in tqdm(range(epochs)):
+        for epoch in range(epochs):
             batch_data, batch_labels, data_index = self.input_data.generate_batch_cbow(data_index, self.batch_size, self.skip_window)
             x_values = autograd.Variable(batch_data)
             y_labels = autograd.Variable(batch_labels[:,0])
+            # start_model = time.time()
             predicted = self.cbow(x_values)
+            # end_model = time.time()
+            # logger.info('Elapsed Time %s' % (end_model - start_model))
             loss = loss_function(predicted, y_labels)
             optimizer.zero_grad()
+            # start_backward = time.time()
             loss.backward()
+            # end_backward = time.time()
+            # logger.info('Elapsed Time %s' % (end_backward - start_backward))
             optimizer.step()
-            if epoch % 1000 == 0:
+            if epoch % 2000 == 0:
                 print('[%d/%d] Loss: %.3f' % (epoch + 1, epochs, loss.data.mean()))
-
 
 
 class InputData:
@@ -101,7 +101,7 @@ class InputData:
             print(self.batch[i, 0], self.reverse_dictionary[self.batch[i, 0]],
                   self.batch[i, 1], self.reverse_dictionary[self.batch[i, 1]],
                   '->', self.labels[i, 0], self.reverse_dictionary[self.labels[i, 0]])
-
+        del self.words
         del skip_window  # remove skip_window setting used for testing
 
     @staticmethod
